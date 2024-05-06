@@ -15,6 +15,7 @@ class LSMTree:
         self.disk = []
         self.capacity = capacity
         self.sstable_no = 0
+        self.tombstone = "##"
 
         parent_folder = "disk"
         subfolders = [f"folder{i}" for i in range(1, 6)]
@@ -51,20 +52,34 @@ class LSMTree:
                     return True        
         return False
 
+    def _delete_key_helper(self, sstable_obj: SSTable, key):
+        file_path = sstable_obj.filepath
+        with open(file_path, 'r') as file:
+            data = json.load(file)
+
+        data[str(key)] = self.tombstone
+
+        with open(file_path, 'w') as file:
+            json.dump(data, file)
+
 
     def delete(self, key):
-        if self.find(key):
-            if self.memory.search(key):
-                self.memory.delete(key)
-                return
-            for segment in self.disk:
-                for k,v in segment:
-                    if k == key:
-                        segment.remove((k, v))
-                    if len(segment) == 0:
-                        self.disk.remove(segment)
-                    break
+        if self.memory.search(key):
+            self.memory.delete(key)
+            print("Deleted Key from Memtable")
+            return
+        
+        found = False
+        for folder in self.sstable_map:
+            for sstable_obj in self.sstable_map[folder]:
+                if sstable_obj.find(key):
+                    found = True
+                    self._delete_key_helper(sstable_obj, key)
+                    print("Deleted Key :", key, "in the ", sstable_obj.filepath)
 
+        if not found:
+            print("Key not found")
+    
     def range_query(self, start, end):
         result = []
         memory_keys = self.memory.range_query(start_key=start, end_key=end)
@@ -101,11 +116,13 @@ lsm_tree = LSMTree()
 random_keys = random.sample(range(1, 50001), 50000)
 random_values = random.sample(range(1, 50001), 50000)
 random_elements = list(zip(random_keys, random_values))
+
 for element in random_elements:
     lsm_tree.insert(element)
 
 print("LSM Tree SSTable Dictionary", lsm_tree.sstable_map)
 
+lsm_tree.delete(random_elements[42000][0])
 """
 print("Memory : ")
 print(lsm_tree.memory.inorder_traversal())
