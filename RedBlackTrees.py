@@ -112,23 +112,29 @@ class RedBlackTree:
         self.length -= 1
 
     def _delete_node(self, node):
-        if node.left is None or node.right is None:
-            child = node.right if node.left is None else node.left
-            self._transplant(node, child)
-            if node.color == 'BLACK':
-                self._delete_fixup(child)
+        original_color = node.color
+        if node.left is None:
+            child = node.right
+            self._transplant(node, node.right)
+        elif node.right is None:
+            child = node.left
+            self._transplant(node, node.left)
         else:
             successor = self._minimum(node.right)
             original_color = successor.color
-            self._transplant(successor, successor.right)
-            successor.right = node.right
-            successor.right.parent = successor
+            child = successor.right
+            if successor.parent == node:
+                child.parent = successor
+            else:
+                self._transplant(successor, successor.right)
+                successor.right = node.right
+                successor.right.parent = successor
             self._transplant(node, successor)
             successor.left = node.left
             successor.left.parent = successor
             successor.color = node.color
-            if original_color == 'BLACK':
-                self._delete_fixup(successor)
+        if original_color == 'BLACK':
+            self._delete_fixup(child)
 
     def _transplant(self, u, v):
         if u.parent is None:
