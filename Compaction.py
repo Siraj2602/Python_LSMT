@@ -48,9 +48,17 @@ class CompactionManager:
             
             filepath = sstable.filepath
             with open(filepath, "r") as file:
-                data_dict = json.load(file)
-                all_files_contents.append(data_dict.items())
-                
+                line = file.readline()
+                full_data = {}
+                while line:
+                    segment_data = json.loads(line)
+                    full_data.update(segment_data)
+                    line = file.readline()
+
+                full_data = full_data.items()
+                full_data = [(int(key) , value) for key, value in full_data]
+                all_files_contents.append(list(full_data))
+
             os.remove(filepath)
         
         self.merge_no += 1
@@ -58,7 +66,6 @@ class CompactionManager:
         compacted_file_name = 'merged' + str(self.merge_no)
         merged_sorted_list = list(heapq.merge(*all_files_contents))
         sstable_obj = SSTable(folder_path=next_folder_path + "/", filename=compacted_file_name , key_value_list=merged_sorted_list, capacity=len(merged_sorted_list))
-        #all_files_contents.sort(key=lambda x: int(x['key']))
         
         self.sstable_map[folder_name] = []
         self.sstable_map[next_folder_name].append(sstable_obj)

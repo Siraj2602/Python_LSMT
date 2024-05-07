@@ -5,17 +5,20 @@ from heapq import merge
 import random
 from pprint import pprint
 import json
+import time
+from tqdm import tqdm
+import os
 
 def merge_sorted_lists(sorted_lists):
     return list(merge(*sorted_lists))
 
 class LSMTree:
-    def __init__(self, capacity=1500):
+    def __init__(self, capacity=300000):
         self.memory = RedBlackTree()
         self.disk = []
         self.capacity = capacity
         self.sstable_no = 0
-        self.tombstone = "##"
+        self.tombstone = ""
 
         parent_folder = "disk"
         subfolders = [f"folder{i}" for i in range(1, 6)]
@@ -53,20 +56,39 @@ class LSMTree:
         return False
 
     def _delete_key_helper(self, sstable_obj: SSTable, key):
+
         file_path = sstable_obj.filepath
-        with open(file_path, 'r') as file:
-            data = json.load(file)
 
-        data[str(key)] = self.tombstone
+        # Read the original JSON file line by line and update the specified key-value pair
+        with open(file_path, 'r+') as file:
+            
+            key_start_index = None
+            key_end_index = None
+            segment_offset = ""
+            for start_index, end_index in sstable_obj.index_table:
+                if start_index <= key <= end_index:
+                    segment_offset = sstable_obj.index_table[(start_index, end_index)]
+                    key_start_index = start_index
+                    key_end_index = end_index
+                    break
 
-        with open(file_path, 'w') as file:
-            json.dump(data, file)
+            file.seek(int(segment_offset))
 
+            segment_data = json.loads(file.readline())
+
+            segment_data[key] = self.tombstone
+
+            segment_data = [(int(key), value) for key, value in segment_data.items()]
+
+            segment_data = dict(sorted(segment_data, key=lambda x: x[0]))
+
+            file.seek(sstable_obj.index_table[(key_start_index, key_end_index)])
+
+            json.dump(segment_data, file)
 
     def delete(self, key):
         if self.memory.search(key):
             self.memory.delete(key)
-            print("Deleted Key from Memtable")
             return
         
         found = False
@@ -75,17 +97,49 @@ class LSMTree:
                 if sstable_obj.find(key):
                     found = True
                     self._delete_key_helper(sstable_obj, key)
-                    print("Deleted Key :", key, "in the ", sstable_obj.filepath)
+                    break
 
         if not found:
             print("Key not found")
     
+    def _range_query_sstables(self, start, end):
+        result = []
+        for folder in self.sstable_map:
+            for sstable_obj in self.sstable_map[folder]:
+                index_table = sstable_obj.index_table
+                for start_index, end_index in index_table.keys():
+                    if end < start_index or start > end_index:
+                        continue
+                    else:
+                        file_path = sstable_obj.filepath
+                        with open(file_path, "r") as file:
+                            line = file.readline()
+                            full_data = {}
+                            while line:
+                                segment_data = json.loads(line)
+                                full_data.update(segment_data)
+                                line = file.readline()
+
+                            full_data = full_data.items()
+                            full_data = [(int(key) , value) for key, value in full_data]
+
+                        sstable_elements = []
+                        for key, value in full_data:
+                            if start <= key <= end:
+                                sstable_elements.append((key, value))
+                        result.extend(sstable_elements)
+
+        return result
+
     def range_query(self, start, end):
         result = []
         memory_keys = self.memory.range_query(start_key=start, end_key=end)
         result.extend(memory_keys)
-        for segment in self.disk[::-1]:
-            result.extend([(key,value) for key, value in segment if start <= key <= end])
+
+        sstable_elements = self._range_query_sstables(start, end)
+
+        result.extend(sstable_elements)
+
         return sorted(result)
 
     def flush_memory_to_disk(self):
@@ -98,7 +152,6 @@ class LSMTree:
         self.memory = RedBlackTree()
         #if len(self.disk) > self.merge_threshold:
         #    self.compact()
-        print("Flushed Memtable to SSTable No. ", self.sstable_no)
         self.compaction_manager.manage_compact()
 
     def compact(self):
@@ -113,21 +166,42 @@ class LSMTree:
 lsm_tree = LSMTree()
 
 # Construct LSM tree
-random_keys = random.sample(range(1, 50001), 50000)
-random_values = random.sample(range(1, 50001), 50000)
+random_keys = random.sample(range(1, 10000001), 10000000)
+#random_keys = [str(i) for i in random_keys]
+random_values = random.sample(range(1, 10000001), 10000000)
 random_elements = list(zip(random_keys, random_values))
 
-for element in random_elements:
+start = time.time()
+for element in tqdm(random_elements):
     lsm_tree.insert(element)
 
+end = time.time()
+
+print("Time taken for 50000 inserts ", end-start)
 print("LSM Tree SSTable Dictionary", lsm_tree.sstable_map)
 
-lsm_tree.delete(random_elements[42000][0])
+start = time.time()
+
+result = lsm_tree.range_query(start=1, end=50000)
+
+end = time.time()
+
+print("Range Query result, ", len(result))
+print("Start element :", result[0])
+print("End element :", result[-1])
+print("Range Query Time : ", end - start)
+
 """
-print("Memory : ")
-print(lsm_tree.memory.inorder_traversal())
-print("Disk : ")
-pprint(lsm_tree.disk)
-print("Range Query: ")
-print(lsm_tree.range_query(5, 70))
+for i in random.sample(range(10, 60), 40):
+    lsm_tree.delete(random_elements[i][0])
+
+
+start = time.time()
+
+for i in tqdm(range(len(random_elements))):
+    lsm_tree.delete(random_elements[i][0])
+
+end = time.time()
+print("Time taken for 50000 Deletes ", end-start)
+
 """
