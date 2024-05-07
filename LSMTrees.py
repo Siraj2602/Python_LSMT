@@ -177,7 +177,7 @@ for element in tqdm(random_elements):
 
 end = time.time()
 
-print("Time taken for 50000 inserts ", end-start)
+print("Time taken for 10Million inserts ", end-start)
 print("LSM Tree SSTable Dictionary", lsm_tree.sstable_map)
 
 start = time.time()
