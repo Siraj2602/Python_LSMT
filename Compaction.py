@@ -54,38 +54,28 @@ class CompactionManager:
 
                 full_data = full_data.items()
                 full_data = [(int(key) , value) for key, value in full_data]
-                all_files_contents.append(list(full_data))
-
-            os.remove(filepath)
-        
-        all_delete_keys = set()
-        
-        for sstable in sstable_list:
-            filepath = sstable.delete_meta_path
             
-            if os.path.exists(filepath):
-                with open(filepath, "r") as file:
+            delete_filepath = sstable.delete_meta_path
+            all_delete_keys = set()
+            if os.path.exists(delete_filepath):
+                with open(delete_filepath, "r") as file:
                     line = file.readline()
                     while line:
                         key = int(line)
                         all_delete_keys.add(key)
                         line = file.readline()
             
-                os.remove(filepath)
+                os.remove(delete_filepath)
 
+                full_data = [(key, value) for key, value in full_data if key not in all_delete_keys]
+            all_files_contents.append(list(full_data))
+
+            os.remove(filepath)
+        
         self.merge_no += 1
         
         compacted_file_name = 'merged' + str(self.merge_no)
         merged_sorted_list = list(heapq.merge(*all_files_contents))
-        
-        if all_delete_keys :
-            new_merged_sorted_list = []
-            for key, value in merged_sorted_list:
-                if key not in all_delete_keys:
-                    new_merged_sorted_list.append((key, value))
-            
-            #merged_sorted_list = [(key, value) for key, value in merged_sorted_list if key not in all_delete_keys]
-            merged_sorted_list = new_merged_sorted_list
         
         sstable_obj = SSTable(folder_path=next_folder_path + "/", filename=compacted_file_name , key_value_list=merged_sorted_list, capacity=len(merged_sorted_list))
         
