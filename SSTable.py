@@ -7,8 +7,8 @@ class SSTable:
         self.filepath = folder_path + self.filename
         self.bloom_filter = BloomFilter(capacity=capacity, error_rate=0.01)
         self.index_table = {}
+        self.delete_meta_path = self.filepath + "_delete_meta"
         self.segment_size = int(0.1 * len(key_value_list))
-
         start_offset = 0
 
         for key, _ in key_value_list:

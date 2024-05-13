@@ -1,6 +1,4 @@
 import os
-import shutil
-import csv
 import json
 import heapq 
 from SSTable import SSTable
@@ -25,7 +23,7 @@ class CompactionManager:
     def check_threshold_and_compact(self, folder_name):
         folder_path = self.folder_paths.get(folder_name)
         if folder_path:
-            file_count = len([name for name in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, name))])
+            file_count = len(self.sstable_map[folder_name])
             if file_count >= self.threshold:
                 self.compact_and_move(folder_name)
                 return True
@@ -41,7 +39,6 @@ class CompactionManager:
 
         # List to store contents of all JSON files
         all_files_contents = []
-        
         
         sstable_list = self.sstable_map[folder_name]
         for sstable in sstable_list:
@@ -61,10 +58,35 @@ class CompactionManager:
 
             os.remove(filepath)
         
+        all_delete_keys = set()
+        
+        for sstable in sstable_list:
+            filepath = sstable.delete_meta_path
+            
+            if os.path.exists(filepath):
+                with open(filepath, "r") as file:
+                    line = file.readline()
+                    while line:
+                        key = int(line)
+                        all_delete_keys.add(key)
+                        line = file.readline()
+            
+                os.remove(filepath)
+
         self.merge_no += 1
         
         compacted_file_name = 'merged' + str(self.merge_no)
         merged_sorted_list = list(heapq.merge(*all_files_contents))
+        
+        if all_delete_keys :
+            new_merged_sorted_list = []
+            for key, value in merged_sorted_list:
+                if key not in all_delete_keys:
+                    new_merged_sorted_list.append((key, value))
+            
+            #merged_sorted_list = [(key, value) for key, value in merged_sorted_list if key not in all_delete_keys]
+            merged_sorted_list = new_merged_sorted_list
+        
         sstable_obj = SSTable(folder_path=next_folder_path + "/", filename=compacted_file_name , key_value_list=merged_sorted_list, capacity=len(merged_sorted_list))
         
         self.sstable_map[folder_name] = []
