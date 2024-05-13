@@ -120,7 +120,6 @@ class LSMTree:
                 if sstable_obj.find(key):
                     found = True
                     self._delete_key_helper(sstable_obj, key)
-                    break
 
         if not found:
             print("Key not found")
